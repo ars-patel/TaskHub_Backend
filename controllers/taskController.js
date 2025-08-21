@@ -1,11 +1,10 @@
 const Task = require("../models/Task");
 
-// GET /api/tasks
 const getTasks = async (req, res) => {
   try {
     const { status } = req.query;
 
-    // Determine base filter by role
+    // Base filter based on role
     const base = {
       admin: req.user.role === "admin" ? req.user._id : req.user.adminId,
     };
@@ -13,42 +12,36 @@ const getTasks = async (req, res) => {
       base.status = status;
     }
 
-    let tasks;
-    if (req.user.role === "admin") {
-      tasks = await Task.find(base).populate(
-        "assignedTo",
-        "name email profileImageUrl"
-      );
-    } else {
-      tasks = await Task.find({ ...base, assignedTo: req.user._id }).populate(
-        "assignedTo",
-        "name email profileImageUrl"
-      );
-    }
+    // Query with sorting by dueDate (ascending)
+    let query = req.user.role === "admin"
+      ? Task.find(base)
+      : Task.find({ ...base, assignedTo: req.user._id });
 
-    tasks = tasks.map((task) => {
-      const completedCount = task.todoChecklist.filter((i) => i.completed).length;
-      return { ...task._doc, completedTodoCount: completedCount };
-    });
+    let tasks = await query
+      .populate("assignedTo", "name email profileImageUrl")
+      .sort({ dueDate: 1 }); // Sort by dueDate
 
-    const countFilter =
-      req.user.role === "admin"
-        ? base
-        : { ...base, assignedTo: req.user._id };
+    // Add completedTodoCount to each task (processed in-memory)
+    tasks = tasks.map((task) => ({
+      ...task._doc,
+      completedTodoCount: task.todoChecklist.filter((i) => i.completed).length,
+    }));
 
-    const allTasks = await Task.countDocuments(countFilter);
-    const pendingTasks = await Task.countDocuments({ ...countFilter, status: "Pending" });
-    const inProgressTasks = await Task.countDocuments({ ...countFilter, status: "In Progress" });
-    const completedTasks = await Task.countDocuments({ ...countFilter, status: "Completed" });
+    // Count tasks by status
+    const countFilter = req.user.role === "admin"
+      ? base
+      : { ...base, assignedTo: req.user._id };
+
+    const [allTasks, pendingTasks, inProgressTasks, completedTasks] = await Promise.all([
+      Task.countDocuments(countFilter),
+      Task.countDocuments({ ...countFilter, status: "Pending" }),
+      Task.countDocuments({ ...countFilter, status: "In Progress" }),
+      Task.countDocuments({ ...countFilter, status: "Completed" }),
+    ]);
 
     res.json({
       tasks,
-      statusSummary: {
-        all: allTasks,
-        pendingTasks,
-        inProgressTasks,
-        completedTasks,
-      },
+      statusSummary: { all: allTasks, pendingTasks, inProgressTasks, completedTasks },
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
