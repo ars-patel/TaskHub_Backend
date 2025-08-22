@@ -12,7 +12,7 @@ const router = express.Router();
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/profile", protect, getUserProfile);
-router.put("/profileUpdate", protect, upload.single("profileImage"), updateUserProfile);
+router.put("/profile", protect, upload.single("profileImage"), updateUserProfile);
 
 router.post("/upload-image", upload.single("image"), (req, res) => {
   if (!req.file) {
